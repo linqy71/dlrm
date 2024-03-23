@@ -34,7 +34,7 @@ if [ $lsecp=1 ]; then
       --ckpt-dir=$ckpt_dir \
       --lsecp-eperc=0.01 \
       --lsecp-clen=10 \
-      --perf-out-path="../../perf_output/dlrm/lsecp.json"
+      --perf-out-path="./lsecp.json"
 
 fi
 
@@ -62,7 +62,7 @@ if [ $diff=1 ]; then
       --ckpt-dir=$ckpt_dir \
       --lsecp-eperc=0.01 \
       --lsecp-clen=10 \
-      --perf-out-path="../../perf_output/dlrm/diff.json"
+      --perf-out-path="./diff.json"
 
 fi
 
@@ -89,7 +89,7 @@ if [ $incre=1 ]; then
       --ckpt-dir=$ckpt_dir \
       --lsecp-eperc=0.01 \
       --lsecp-clen=10 \
-      --perf-out-path="../../perf_output/dlrm/incre.json"
+      --perf-out-path="./incre.json"
 
 fi
 
@@ -116,6 +116,6 @@ if [ $rocksdb=1 ]; then
       --ckpt-dir=$ckpt_dir \
       --lsecp-eperc=0.01 \
       --lsecp-clen=10 \
-      --perf-out-path="../../perf_output/dlrm/rocksdb.json"
+      --perf-out-path="./rocksdb.json"
 
 fi
