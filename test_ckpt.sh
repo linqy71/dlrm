@@ -3,7 +3,7 @@ diff=1
 incre=1
 rocksdb=1
 
-ckpt_dir="/mnt/ssd/checkpoint"
+ckpt_dir=/mnt/ssd/checkpoint
 
 raw_data_file="/mnt/ssd/dataset/kaggle/train.txt"
 processd_data="/mnt/ssd/dataset/kaggle/kaggleAdDisplayChallenge_processed.npz"
@@ -12,6 +12,8 @@ check_freq=10
 num_batches=1000
 
 if [ $lsecp=1 ]; then
+
+  mkdir -p $ckpt_dir/lsecp
 
   python dlrm_s_pytorch_ckpt.py --arch-sparse-feature-size=512 \
       --arch-mlp-bot="13-512-256-64-512" \
@@ -40,6 +42,7 @@ fi
 
 
 if [ $diff=1 ]; then
+  mkdir -p $ckpt_dir/diff
 
   python dlrm_s_pytorch_ckpt.py --arch-sparse-feature-size=512 \
       --arch-mlp-bot="13-512-256-64-512" \
@@ -67,6 +70,7 @@ if [ $diff=1 ]; then
 fi
 
 if [ $incre=1 ]; then
+  mkdir -p $ckpt_dir/incre
 
   python dlrm_s_pytorch_ckpt.py --arch-sparse-feature-size=512 \
       --arch-mlp-bot="13-512-256-64-512" \
@@ -94,6 +98,7 @@ if [ $incre=1 ]; then
 fi
 
 if [ $rocksdb=1 ]; then
+  mkdir -p $ckpt_dir/rocksdb
 
   python dlrm_s_pytorch_ckpt.py --arch-sparse-feature-size=512 \
       --arch-mlp-bot="13-512-256-64-512" \
