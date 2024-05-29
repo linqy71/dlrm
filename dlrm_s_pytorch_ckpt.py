@@ -101,9 +101,8 @@ from tricks.qr_embedding_bag import QREmbeddingBag
 
 import time
 
-from lsecp import LSECP
-from ckpt_with_pickle import CkptWithPickle
-from ckpt_with_rocksdb import CkptWithRocksdb
+from incrcp import IncrCP
+from naive_ckpt import NaiveCkpt
 from tracker import *
 
 with warnings.catch_warnings():
@@ -1017,16 +1016,17 @@ def run():
     parser.add_argument("--lr-decay-start-step", type=int, default=0)
     parser.add_argument("--lr-num-decay-steps", type=int, default=0)
 
-    #ckpt methods: diff, incre, rocksdb, lsecp
-    parser.add_argument("--ckpt-method", type=str, default="lsecp")
+    #ckpt methods: naive_diff, naive_incre, incrcp
+    parser.add_argument("--ckpt-method", type=str, default="incrcp")
     #ckpt freq: every ckpt_freq iterations
-    parser.add_argument("--ckpt-freq", type=int, default=1)
-    parser.add_argument("--ckpt-dir", type=str, default="/mnt/ssd/checkpoint")
-    parser.add_argument("--lsecp-eperc", type=float, default=0.01)
-    parser.add_argument("--lsecp-clen", type=int, default=10)
+    parser.add_argument("--ckpt-freq", type=int, default=10)
+    parser.add_argument("--ckpt-dir", type=str, default="/mnt/3dx/checkpoint")
+    parser.add_argument("--eperc", type=float, default=0.01)
+    parser.add_argument("--concat", type=int, default=0)
+    parser.add_argument("--incrcp-reset-thres", type=int, default=100)
     
     # the file name to store perf data
-    parser.add_argument("--perf-out-path", type=str, default="")
+    parser.add_argument("--perf-out-path", type=str, default="./perf_res/incrcp.json")
 
 
     global args
@@ -1384,27 +1384,22 @@ def run():
 
     tracker = Tracker()
     ckpt_sys = None
-    ckpt_path = args.ckpt_dir
-    if args.ckpt_method == "lsecp":
-        ckpt_path = args.ckpt_dir + "/lsecp"
-        ckpt_sys = LSECP(ckpt_path, emb_names, args.lsecp_eperc, args.lsecp_clen)
+    ckpt_base = True
+    ckpt_path = args.ckpt_dir + "/" + args.ckpt_method
+    if args.ckpt_method == "incrcp":
+        ckpt_sys = IncrCP(ckpt_path, emb_names, args.eperc, args.concat, args.incrcp_reset_thres, 0)
     elif args.ckpt_method == "diff":
-        ckpt_path = args.ckpt_dir + "/diff"
-        ckpt_sys = CkptWithPickle(ckpt_path, emb_names)
-    elif args.ckpt_method == "incre":
-        ckpt_path = args.ckpt_dir + "/incre"
-        ckpt_sys = CkptWithPickle(ckpt_path, emb_names)
-    elif args.ckpt_method == "rocksdb":
-        ckpt_path = args.ckpt_dir + "/rocksdb"
-        ckpt_sys = CkptWithRocksdb(ckpt_path, emb_names)
+        ckpt_sys = NaiveCkpt(ckpt_path, emb_names)
+    elif args.ckpt_method == "naive_incre":
+        ckpt_sys = NaiveCkpt(ckpt_path, emb_names)
 
     perf_count = {}
     do_perf = False
     if args.perf_out_path != "":
         perf_count = {
-            "emb_f_time": [], #time that save to file takes
-            "emb_time": [],
-            "mlp_time": [],
+            "save_time": [],
+            "list_time": [],
+            "ckpt_time": [],
             "storage_consumption": []
         }
         do_perf = True
@@ -1544,14 +1539,11 @@ def run():
     
    
     ext_dist.barrier()
-    #todo
-    changed_vector=None
     with torch.autograd.profiler.profile(
         args.enable_profiling, use_cuda=use_gpu, record_shapes=True
     ) as prof:
         if not args.inference_only:
             k = 0
-            total_time_begin = 0
             while k < args.nepochs:
                 
                 if args.mlperf_logging:
@@ -1576,7 +1568,6 @@ def run():
                     previous_iteration_time = None
 
 
-                emb_0_incre_keys = []
                 for j, inputBatch in enumerate(train_ld):
 
                     if j == 0 and args.save_onnx:
@@ -1661,35 +1652,48 @@ def run():
                             lr_scheduler.step()
                     
                     #  do checkpointing
-                    if j == 0 :
-                        # checkpoint base model
-                        torch.save(dlrm.state_dict(), ckpt_path + "/base.pt")
-                    elif j % args.ckpt_freq == 0:
-                        # checkpoint diff view
-                        tracker.add(lS_i)
-                        diff_view = tracker.cur_view()
-                        
-                        emb_start = time.time()
-                        f_time = ckpt_sys.ckpt_emb(diff_view, dlrm, j)
-                        emb_time = time.time() - emb_start
+                    if j % args.ckpt_freq == 0 :
+                        if ckpt_base:
+                            ckpt_base = False
+                            base_name = ckpt_path + "/base." + str(j) + ".pt"
+                            # checkpoint base model
+                            if args.ckpt_method == "diff":
+                                ckpt_sys.diff_hist = [1]
+                                tracker.reset()
+                            ckpt_time = time.time()
+                            torch.save(dlrm.state_dict(), base_name)
+                            ckpt_time = time.time() - ckpt_time
+                            save_time, list_time = 0, 0
+                        else :
+                            # checkpoint diff view
+                            tracker.add(lS_i)
+                            diff_view = tracker.cur_view()
+                            
+                            ckpt_time = time.time()
+                            fraction, save_time, list_time = ckpt_sys.ckpt_emb(diff_view, dlrm, j)
+                            ckpt_time = time.time() - ckpt_time
+                            
+                            if args.ckpt_method != "diff":
+                                tracker.reset()
+                            if args.ckpt_method != "naive_incre":
+                                # may reset baseline ckpt
+                                ckpt_base = ckpt_sys.may_reset_base(fraction)
                         
                         # save non-emb params
                         # user-defined space
-                        mlp_start = time.time()
-                        ckpt_non_emb(dlrm, ckpt_path, j)
-                        mlp_time = time.time() - mlp_start
-                        
+                        # mlp_start = time.time()
+                        # ckpt_non_emb(dlrm, ckpt_path, j)
+                        # mlp_time = time.time() - mlp_start
                         if do_perf:
-                            perf_count["emb_f_time"].append(f_time)
-                            perf_count["emb_time"].append(emb_time)
-                            perf_count["mlp_time"].append(mlp_time)
-                    
-                        if args.ckpt_method != "diff":
-                            tracker.reset()
+                            perf_count["save_time"].append(save_time)
+                            perf_count["list_time"].append(list_time)
+                            perf_count["ckpt_time"].append(ckpt_time)
+                            storage_con = get_folder_size(ckpt_path)
+                            perf_count["storage_consumption"].append(storage_con / (1024*1024))
                     else :
                         # do track only
                         tracker.add(lS_i)
-
+                    
                     if args.mlperf_logging:
                         total_time += iteration_time
                     else:
@@ -1884,13 +1888,9 @@ def run():
         onnx.checker.check_model(dlrm_pytorch_onnx)
     total_time_end = time_wrap(use_gpu)
 
-    if args.ckpt_method == "lsecp" or args.ckpt_method == "rocksdb":
+    if args.ckpt_method == "incrcp":
         ckpt_sys.finish()
-
     if do_perf:
-        storage_con = get_folder_size(ckpt_path)
-        perf_count["storage_consumption"].append(storage_con / (1024*1024))
-        
         with open(args.perf_out_path, "w") as json_file:
             json.dump(perf_count, json_file, indent=4)
 

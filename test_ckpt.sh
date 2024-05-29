@@ -1,19 +1,20 @@
-lsecp=1
+incrcp=1
 diff=1
-incre=1
-rocksdb=1
+naive_incre=1
 
 ckpt_dir=/mnt/ssd/checkpoint
 
 raw_data_file="/mnt/ssd/dataset/kaggle/train.txt"
 processd_data="/mnt/ssd/dataset/kaggle/kaggleAdDisplayChallenge_processed.npz"
 
-check_freq=10
-num_batches=1000
+check_freq=100
+num_batches=5000
 
-if [ $lsecp=1 ]; then
+perf_out_path=/home/nsccgz_qylin_1/IncrCP_paper/experimental_results/dlrm
 
-  mkdir -p $ckpt_dir/lsecp
+if [ $incrcp = 1 ]; then
+  rm -rf $ckpt_dir/incrcp
+  mkdir -p $ckpt_dir/incrcp
 
   python dlrm_s_pytorch_ckpt.py --arch-sparse-feature-size=512 \
       --arch-mlp-bot="13-512-256-64-512" \
@@ -31,17 +32,17 @@ if [ $lsecp=1 ]; then
       --mlperf-bin-loader \
       --mlperf-bin-shuffle --use-gpu \
       --num-batches=$num_batches \
-      --ckpt-method="lsecp" \
+      --ckpt-method="incrcp" \
       --ckpt-freq=$check_freq \
       --ckpt-dir=$ckpt_dir \
-      --lsecp-eperc=0.01 \
-      --lsecp-clen=10 \
-      --perf-out-path="./lsecp.json"
-
+      --eperc=0.02 \
+      --concat=1 \
+      --perf-out-path="$perf_out_path/incrcp.json" \
+      --incrcp-reset-thres=100
 fi
 
-
-if [ $diff=1 ]; then
+if [ $diff = 1 ]; then
+  rm -rf $ckpt_dir/diff
   mkdir -p $ckpt_dir/diff
 
   python dlrm_s_pytorch_ckpt.py --arch-sparse-feature-size=512 \
@@ -63,14 +64,13 @@ if [ $diff=1 ]; then
       --ckpt-method="diff" \
       --ckpt-freq=$check_freq \
       --ckpt-dir=$ckpt_dir \
-      --lsecp-eperc=0.01 \
-      --lsecp-clen=10 \
-      --perf-out-path="./diff.json"
+      --perf-out-path="$perf_out_path/diff.json"
 
 fi
 
-if [ $incre=1 ]; then
-  mkdir -p $ckpt_dir/incre
+if [ $naive_incre = 1 ]; then
+  rm -rf $ckpt_dir/naive_incre
+  mkdir -p $ckpt_dir/naive_incre
 
   python dlrm_s_pytorch_ckpt.py --arch-sparse-feature-size=512 \
       --arch-mlp-bot="13-512-256-64-512" \
@@ -88,39 +88,8 @@ if [ $incre=1 ]; then
       --mlperf-bin-loader \
       --mlperf-bin-shuffle --use-gpu \
       --num-batches=$num_batches \
-      --ckpt-method="incre" \
+      --ckpt-method="naive_incre" \
       --ckpt-freq=$check_freq \
       --ckpt-dir=$ckpt_dir \
-      --lsecp-eperc=0.01 \
-      --lsecp-clen=10 \
-      --perf-out-path="./incre.json"
-
-fi
-
-if [ $rocksdb=1 ]; then
-  mkdir -p $ckpt_dir/rocksdb
-
-  python dlrm_s_pytorch_ckpt.py --arch-sparse-feature-size=512 \
-      --arch-mlp-bot="13-512-256-64-512" \
-      --arch-mlp-top="512-256-1" \
-      --max-ind-range=2500000 \
-      --data-generation=dataset \
-      --data-set=kaggle \
-      --raw-data-file=$raw_data_file \
-      --processed-data-file=$processd_data \
-      --loss-function=bce --round-targets=True --learning-rate=1.0 \
-      --mini-batch-size=256 \
-      --print-freq=2048 \
-      --print-time --test-freq=102400 \
-      --test-mini-batch-size=16384 --test-num-workers=16 \
-      --mlperf-bin-loader \
-      --mlperf-bin-shuffle --use-gpu \
-      --num-batches=$num_batches \
-      --ckpt-method="rocksdb" \
-      --ckpt-freq=$check_freq \
-      --ckpt-dir=$ckpt_dir \
-      --lsecp-eperc=0.01 \
-      --lsecp-clen=10 \
-      --perf-out-path="./rocksdb.json"
-
+      --perf-out-path="$perf_out_path/naive_incre.json"
 fi
