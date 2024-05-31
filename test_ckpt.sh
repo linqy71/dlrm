@@ -2,15 +2,12 @@ incrcp=1
 diff=1
 naive_incre=1
 
-ckpt_dir=/mnt/ssd/checkpoint
-
-raw_data_file="/mnt/ssd/dataset/kaggle/train.txt"
-processd_data="/mnt/ssd/dataset/kaggle/kaggleAdDisplayChallenge_processed.npz"
-
-check_freq=100
-num_batches=5000
-
-perf_out_path=/home/nsccgz_qylin_1/IncrCP_paper/experimental_results/dlrm
+ckpt_dir=/mnt/ssd/checkpoints  # directory to save checkpoints
+raw_data_file="/mnt/ssd/dataset/kaggle/train.txt"   # kaggle dataset path
+processd_data="/mnt/ssd/dataset/kaggle/kaggleAdDisplayChallenge_processed.npz"  # kaggle dataset path
+check_freq=10   # checkpoint frequency: number of iterations
+num_batches=1500  # numebr of total training iterations
+perf_out_path=/home/nsccgz_qylin_1/IncrCP_paper/experimental_results/dlrm # output path
 
 if [ $incrcp = 1 ]; then
   rm -rf $ckpt_dir/incrcp
