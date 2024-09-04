@@ -20,7 +20,7 @@ if [ $incrcp = 1 ]; then
   mkdir -p $ckpt_dir/incrcp
 
   python -m torch.distributed.launch --nproc_per_node=8 --nnodes=2 --node-rank=0 --master_addr=$master_addr --master_port=1234 \
-        dlrm_s_pytorch_ckpt_dis.py --arch-sparse-feature-size=128 \
+        dlrm_s_pytorch_ckpt.py --arch-sparse-feature-size=128 \
         --arch-mlp-bot="13-512-256-128" \
         --arch-mlp-top="512-512-256-1" \
         --max-ind-range=200000000 \
@@ -52,7 +52,7 @@ if [ $naive_incre = 1 ]; then
   mkdir -p $ckpt_dir/naive_incre
 
   python -m torch.distributed.launch --nproc_per_node=8 --nnodes=2 --node-rank=0 --master_addr=$master_addr --master_port=1234 \
-        dlrm_s_pytorch_ckpt_dis.py --arch-sparse-feature-size=128 \
+        dlrm_s_pytorch_ckpt.py --arch-sparse-feature-size=128 \
         --arch-mlp-bot="13-512-256-128" \
         --arch-mlp-top="512-512-256-1" \
         --max-ind-range=200000000 \
@@ -83,7 +83,7 @@ if [ $diff = 1 ]; then
   mkdir -p $ckpt_dir/diff
 
   python -m torch.distributed.launch --nproc_per_node=8 --nnodes=2 --node-rank=0 --master_addr=$master_addr --master_port=1234 \
-        dlrm_s_pytorch_ckpt_dis.py --arch-sparse-feature-size=128 \
+        dlrm_s_pytorch_ckpt.py --arch-sparse-feature-size=128 \
         --arch-mlp-bot="13-512-256-128" \
         --arch-mlp-top="512-512-256-1" \
         --max-ind-range=200000000 \

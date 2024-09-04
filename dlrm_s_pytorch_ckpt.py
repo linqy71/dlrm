@@ -79,7 +79,7 @@ import numpy as np
 import optim.rwsadagrad as RowWiseSparseAdagrad
 import sklearn.metrics
 
-import msgpack
+import os
 
 # pytorch
 import torch
@@ -100,7 +100,7 @@ from tricks.md_embedding_bag import md_solver, PrEmbeddingBag
 from tricks.qr_embedding_bag import QREmbeddingBag
 
 import time
-
+import copy
 from incrcp import IncrCP
 from naive_ckpt import NaiveCkpt
 from tracker import *
@@ -248,6 +248,8 @@ class DLRM_Net(nn.Module):
             if ext_dist.my_size > 1:
                 if i not in self.local_emb_indices:
                     continue
+                # else :
+                #     time.sleep(i * 30)
             n = ln[i]
 
             # construct embedding operator
@@ -393,6 +395,15 @@ class DLRM_Net(nn.Module):
                     "ERROR: --loss-function=" + self.loss_function + " is not supported"
                 )
 
+    def get_ind_slice(self, lS_i):
+        return lS_i[self.local_emb_slice]
+
+    def get_emb_indices(self):
+        return self.local_emb_indices
+
+    def get_emb(self):
+        return self.emb_l
+
     def apply_mlp(self, x, layers):
         # approach 1: use ModuleList
         # for layer in layers:
@@ -537,7 +548,6 @@ class DLRM_Net(nn.Module):
                 "ERROR: batch_size %d can not split across %d ranks evenly"
                 % (batch_size, ext_dist.my_size)
             )
-
         dense_x = dense_x[ext_dist.get_my_slice(batch_size)]
         lS_o = lS_o[self.local_emb_slice]
         lS_i = lS_i[self.local_emb_slice]
@@ -614,7 +624,9 @@ class DLRM_Net(nn.Module):
         ### prepare model (overwrite) ###
         # WARNING: # of devices must be >= batch size in parallel_forward call
         batch_size = dense_x.size()[0]
+        # print(self.ndevices, batch_size, len(self.emb_l))
         ndevices = min(self.ndevices, batch_size, len(self.emb_l))
+        # ndevices = self.ndevices
         device_ids = range(ndevices)
         # WARNING: must redistribute the model if mini-batch size changes(this is common
         # for last mini-batch, when # of elements in the dataset/batch size is not even
@@ -623,6 +635,7 @@ class DLRM_Net(nn.Module):
 
         if self.parallel_model_is_not_prepared or self.sync_dense_params:
             # replicate mlp (data parallelism)
+            # print(device_ids)
             self.bot_l_replicas = replicate(self.bot_l, device_ids)
             self.top_l_replicas = replicate(self.top_l, device_ids)
             self.parallel_model_batch_size = batch_size
@@ -985,7 +998,7 @@ def run():
     # gpu
     parser.add_argument("--use-gpu", action="store_true", default=False)
     # distributed
-    parser.add_argument("--local_rank", type=int, default=-1)
+    parser.add_argument("--local-rank", type=int, default=-1)
     parser.add_argument("--dist-backend", type=str, default="")
     # debugging and profiling
     parser.add_argument("--print-freq", type=int, default=1)
@@ -1081,7 +1094,7 @@ def run():
     use_gpu = args.use_gpu and torch.cuda.is_available()
 
     if not args.debug_mode:
-        ext_dist.init_distributed(
+        global_rank = ext_dist.init_distributed(
             local_rank=args.local_rank, use_gpu=use_gpu, backend=args.dist_backend
         )
 
@@ -1135,11 +1148,12 @@ def run():
         # input and target at random
         ln_emb = np.fromstring(args.arch_embedding_size, dtype=int, sep="-")
         m_den = ln_bot[0]
-        train_data, train_ld, test_data, test_ld = dp.make_random_data_and_loader(
+        train_data, train_ld = dp.make_random_data_and_loader(
             args, ln_emb, m_den
         )
+        print("make_random_data_and_loader done")
         nbatches = args.num_batches if args.num_batches > 0 else len(train_ld)
-        nbatches_test = len(test_ld)
+        nbatches_test = 0
 
     args.ln_emb = ln_emb.tolist()
     if args.mlperf_logging:
@@ -1378,14 +1392,25 @@ def run():
     ### main loop ###
     
     emb_names = []
+    
+    if ext_dist.my_size > 1 : # distributed
+        if args.perf_out_path != "" :
+            args.perf_out_path = args.perf_out_path + "/" + "rank" + str(args.local_rank)
+    
     for name in dlrm.state_dict().keys():
         if "emb" in name:
             emb_names.append(name)
 
+    args.perf_out_path = args.perf_out_path + "/" + args.ckpt_method + ".json"
+    os.makedirs(args.perf_out_path, exist_ok=True)
+    
     tracker = Tracker()
     ckpt_sys = None
     ckpt_base = True
     ckpt_path = args.ckpt_dir + "/" + args.ckpt_method
+    if ext_dist.my_size > 1 : # distributed
+        ckpt_path = ckpt_path + "/rank" + str(args.local_rank)
+
     if args.ckpt_method == "incrcp":
         ckpt_sys = IncrCP(ckpt_path, emb_names, args.eperc, args.concat, args.incrcp_reset_thres, 0)
     elif args.ckpt_method == "diff":
@@ -1400,7 +1425,9 @@ def run():
             "save_time": [],
             "list_time": [],
             "ckpt_time": [],
-            "storage_consumption": []
+            "snapshot_time": [],
+            "storage_consumption": [],
+            "fraction": []
         }
         do_perf = True
 
@@ -1653,25 +1680,41 @@ def run():
                     
                     #  do checkpointing
                     if j % args.ckpt_freq == 0 :
+                        save_time, list_time, snapshot_time, ckpt_time, fraction = 0,0,0,0,0
                         if ckpt_base:
                             ckpt_base = False
-                            base_name = ckpt_path + "/base." + str(j) + ".pt"
+                            if ext_dist.my_size > 1:
+                                base_name = ckpt_path + "/base" + str(j) + ".rank" + str(args.local_rank) + ".pt"
+                            else :
+                                base_name = ckpt_path + "/base." + str(j) + ".pt"
                             # checkpoint base model
                             if args.ckpt_method == "diff":
                                 ckpt_sys.diff_hist = [1]
                                 tracker.reset()
                             ckpt_time = time.time()
-                            torch.save(dlrm.state_dict(), base_name)
+                            
+                            base_dict = dlrm.state_dict()
+                            
+                            torch.save(base_dict, base_name)
                             ckpt_time = time.time() - ckpt_time
-                            save_time, list_time = 0, 0
+                            snapshot_time, save_time, list_time = 0, 0, 0
                         else :
                             # checkpoint diff view
-                            tracker.add(lS_i)
-                            diff_view = tracker.cur_view()
-                            
-                            ckpt_time = time.time()
-                            fraction, save_time, list_time = ckpt_sys.ckpt_emb(diff_view, dlrm, j)
-                            ckpt_time = time.time() - ckpt_time
+                            if ext_dist.my_size > 1:
+                                ids = dlrm.get_ind_slice(lS_i)
+                                tracker.add(ids)
+                                diff_view = tracker.cur_view()
+                                ckpt_time = time.time()
+                                fraction, save_time, list_time, snapshot_time = ckpt_sys.ckpt_emb(diff_view, dlrm, j)
+                                ckpt_time = time.time() - ckpt_time
+                                perf_count["fraction"].append(fraction)
+                            elif ext_dist.my_size == 1:
+                                tracker.add(lS_i)
+                                diff_view = tracker.cur_view()
+                                ckpt_time = time.time()
+                                fraction, save_time, list_time, snapshot_time = ckpt_sys.ckpt_emb(diff_view, dlrm, j)
+                                ckpt_time = time.time() - ckpt_time
+                                perf_count["fraction"].append(fraction)
                             
                             if args.ckpt_method != "diff":
                                 tracker.reset()
@@ -1688,11 +1731,20 @@ def run():
                             perf_count["save_time"].append(save_time)
                             perf_count["list_time"].append(list_time)
                             perf_count["ckpt_time"].append(ckpt_time)
+                            perf_count['snapshot_time'].append(snapshot_time)
                             storage_con = get_folder_size(ckpt_path)
                             perf_count["storage_consumption"].append(storage_con / (1024*1024))
+                            
+                            with open(args.perf_out_path, "w") as json_file:
+                                json.dump(perf_count, json_file, indent=4)
+                        print("done ", j)    
                     else :
                         # do track only
-                        tracker.add(lS_i)
+                        if ext_dist.my_size > 1:
+                            ids = dlrm.get_ind_slice(lS_i)
+                            tracker.add(ids)
+                        elif ext_dist.my_size == 1:
+                            tracker.add(lS_i)
                     
                     if args.mlperf_logging:
                         total_time += iteration_time
