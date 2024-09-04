@@ -1397,12 +1397,13 @@ def run():
         if args.perf_out_path != "" :
             args.perf_out_path = args.perf_out_path + "/" + "rank" + str(args.local_rank)
     
+    os.makedirs(args.perf_out_path, exist_ok=True)
     for name in dlrm.state_dict().keys():
         if "emb" in name:
             emb_names.append(name)
 
     args.perf_out_path = args.perf_out_path + "/" + args.ckpt_method + ".json"
-    os.makedirs(args.perf_out_path, exist_ok=True)
+    
     
     tracker = Tracker()
     ckpt_sys = None
