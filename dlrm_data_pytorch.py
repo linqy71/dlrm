@@ -70,7 +70,8 @@ class CriteoDataset(Dataset):
             days = 7
             out_file = "kaggleAdDisplayChallenge_processed"
         elif dataset == "terabyte":
-            days = 24
+            # days = 24
+            days = 16
             out_file = "terabyte_processed"
         else:
             raise (ValueError("Data set option is not supported"))
@@ -231,7 +232,10 @@ class CriteoDataset(Dataset):
                         indices[i] = np.random.permutation(indices[i])
                     print("Randomized indices per day ...")
 
-                train_indices = np.concatenate(indices[:-1])
+                if days == 1 :
+                    train_indices = indices
+                else :
+                    train_indices = np.concatenate(indices[:-1])
                 test_indices = indices[-1]
                 test_indices, val_indices = np.array_split(test_indices, 2)
 
@@ -451,27 +455,27 @@ def make_criteo_data_and_loaders(args, offset_to_length_converter=False):
                 sampler=RandomSampler(train_data) if args.mlperf_bin_shuffle else None,
             )
 
-            test_data = data_loader_terabyte.CriteoBinDataset(
-                data_file=test_file,
-                counts_file=counts_file,
-                batch_size=args.test_mini_batch_size,
-                max_ind_range=args.max_ind_range,
-            )
+            # test_data = data_loader_terabyte.CriteoBinDataset(
+            #     data_file=test_file,
+            #     counts_file=counts_file,
+            #     batch_size=args.test_mini_batch_size,
+            #     max_ind_range=args.max_ind_range,
+            # )
 
-            mlperf_logger.log_event(
-                key=mlperf_logger.constants.EVAL_SAMPLES, value=test_data.num_samples
-            )
+            # mlperf_logger.log_event(
+            #     key=mlperf_logger.constants.EVAL_SAMPLES, value=test_data.num_samples
+            # )
 
-            test_loader = torch.utils.data.DataLoader(
-                test_data,
-                batch_size=None,
-                batch_sampler=None,
-                shuffle=False,
-                num_workers=0,
-                collate_fn=None,
-                pin_memory=False,
-                drop_last=False,
-            )
+            # test_loader = torch.utils.data.DataLoader(
+            #     test_data,
+            #     batch_size=None,
+            #     batch_sampler=None,
+            #     shuffle=False,
+            #     num_workers=0,
+            #     collate_fn=None,
+            #     pin_memory=False,
+            #     drop_last=False,
+            # )
         else:
             data_filename = args.raw_data_file.split("/")[-1]
 
@@ -487,17 +491,17 @@ def make_criteo_data_and_loaders(args, offset_to_length_converter=False):
                 args.dataset_multiprocessing,
             )
 
-            test_data = CriteoDataset(
-                args.data_set,
-                args.max_ind_range,
-                args.data_sub_sample_rate,
-                args.data_randomize,
-                "test",
-                args.raw_data_file,
-                args.processed_data_file,
-                args.memory_map,
-                args.dataset_multiprocessing,
-            )
+            # test_data = CriteoDataset(
+            #     args.data_set,
+            #     args.max_ind_range,
+            #     args.data_sub_sample_rate,
+            #     args.data_randomize,
+            #     "test",
+            #     args.raw_data_file,
+            #     args.processed_data_file,
+            #     args.memory_map,
+            #     args.dataset_multiprocessing,
+            # )
 
             train_loader = data_loader_terabyte.DataLoader(
                 data_directory=data_directory,
@@ -508,14 +512,14 @@ def make_criteo_data_and_loaders(args, offset_to_length_converter=False):
                 split="train",
             )
 
-            test_loader = data_loader_terabyte.DataLoader(
-                data_directory=data_directory,
-                data_filename=data_filename,
-                days=[23],
-                batch_size=args.test_mini_batch_size,
-                max_ind_range=args.max_ind_range,
-                split="test",
-            )
+            # test_loader = data_loader_terabyte.DataLoader(
+            #     data_directory=data_directory,
+            #     data_filename=data_filename,
+            #     days=[23],
+            #     batch_size=args.test_mini_batch_size,
+            #     max_ind_range=args.max_ind_range,
+            #     split="test",
+            # )
     else:
         train_data = CriteoDataset(
             args.data_set,
@@ -621,8 +625,8 @@ class RandomDataset(Dataset):
         self.rand_data_sigma = rand_data_sigma
 
     def reset_numpy_seed(self, numpy_rand_seed):
-        np.random.seed(numpy_rand_seed)
-        # torch.manual_seed(numpy_rand_seed)
+        # np.random.seed(numpy_rand_seed)
+        torch.manual_seed(numpy_rand_seed)
 
     def __getitem__(self, index):
 
@@ -723,27 +727,27 @@ def make_random_data_and_loader(
         rand_seed=args.numpy_rand_seed,
     )  # WARNING: generates a batch of lookups at once
 
-    test_data = RandomDataset(
-        m_den,
-        ln_emb,
-        args.data_size,
-        args.num_batches,
-        args.mini_batch_size,
-        args.num_indices_per_lookup,
-        args.num_indices_per_lookup_fixed,
-        1,  # num_targets
-        args.round_targets,
-        args.data_generation,
-        args.data_trace_file,
-        args.data_trace_enable_padding,
-        reset_seed_on_access=True,
-        rand_data_dist=args.rand_data_dist,
-        rand_data_min=args.rand_data_min,
-        rand_data_max=args.rand_data_max,
-        rand_data_mu=args.rand_data_mu,
-        rand_data_sigma=args.rand_data_sigma,
-        rand_seed=args.numpy_rand_seed,
-    )
+    # test_data = RandomDataset(
+    #     m_den,
+    #     ln_emb,
+    #     args.data_size,
+    #     args.num_batches,
+    #     args.mini_batch_size,
+    #     args.num_indices_per_lookup,
+    #     args.num_indices_per_lookup_fixed,
+    #     1,  # num_targets
+    #     args.round_targets,
+    #     args.data_generation,
+    #     args.data_trace_file,
+    #     args.data_trace_enable_padding,
+    #     reset_seed_on_access=True,
+    #     rand_data_dist=args.rand_data_dist,
+    #     rand_data_min=args.rand_data_min,
+    #     rand_data_max=args.rand_data_max,
+    #     rand_data_mu=args.rand_data_mu,
+    #     rand_data_sigma=args.rand_data_sigma,
+    #     rand_seed=args.numpy_rand_seed,
+    # )
 
     collate_wrapper_random = collate_wrapper_random_offset
     if offset_to_length_converter:
@@ -759,16 +763,16 @@ def make_random_data_and_loader(
         drop_last=False,  # True
     )
 
-    test_loader = torch.utils.data.DataLoader(
-        test_data,
-        batch_size=1,
-        shuffle=False,
-        num_workers=args.num_workers,
-        collate_fn=collate_wrapper_random,
-        pin_memory=False,
-        drop_last=False,  # True
-    )
-    return train_data, train_loader, test_data, test_loader
+    # test_loader = torch.utils.data.DataLoader(
+    #     test_data,
+    #     batch_size=1,
+    #     shuffle=False,
+    #     num_workers=args.num_workers,
+    #     collate_fn=collate_wrapper_random,
+    #     pin_memory=False,
+    #     drop_last=False,  # True
+    # )
+    return train_data, train_loader
 
 
 def generate_random_data(
