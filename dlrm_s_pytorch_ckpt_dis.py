@@ -1697,9 +1697,9 @@ def run():
                             base_dict = dlrm.state_dict()
                             snapshot_time = time.time() - snapshot_time
                             
-                            # torch.save(base_dict, base_name)
+                            torch.save(base_dict, base_name)
                             ckpt_time = time.time() - ckpt_time
-                            save_time, list_time = 0, 0
+                            snapshot_time, save_time, list_time = 0, 0, 0
                         else :
                             # checkpoint diff view
                             if ext_dist.my_size > 1:
